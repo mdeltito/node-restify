@@ -95,7 +95,7 @@ describe('body reader', function() {
             );
         });
 
-        describe('when maxBodySize given should', function() {
+        describe('when maxBodySize given (compressed payload)', function() {
             var body = { apple: 'red' };
             var bodyTooLarge = { apple: 'red', lemon: 'yellow' };
 
@@ -133,6 +133,57 @@ describe('body reader', function() {
                 CLIENT.post('/compressed', bodyTooLarge, function(err, _, res) {
                     assert.isOk(err, 'should fail');
                     assert.equal(res.statusCode, 413);
+                    assert.deepEqual(JSON.parse(res.body), {
+                        code: 'PayloadTooLarge',
+                        message:
+                            'Request body size exceeds ' + compressedBodySize
+                    });
+                    done();
+                });
+            });
+        });
+
+        describe('when maxBodySize given (inflated payload)', function() {
+            var body = { a: 'b'.repeat(1000) };
+            var bodyTooLarge = { a: 'b'.repeat(2000) };
+            var rawBodySize = Buffer.byteLength(JSON.stringify(body), 'utf8');
+
+            beforeEach(function() {
+                SERVER.use(
+                    restify.plugins.bodyParser({
+                        maxBodySize: rawBodySize
+                    })
+                );
+
+                CLIENT = restifyClients.createJsonClient({
+                    url: 'http://127.0.0.1:' + PORT,
+                    retry: false,
+                    gzip: {}
+                });
+
+                SERVER.post('/compressed', function(req, res, next) {
+                    res.send();
+                    next();
+                });
+            });
+
+            it('return 200 when body size under the limit', function(done) {
+                CLIENT.post('/compressed', body, function(err, _, res) {
+                    assert.ifError(err);
+                    assert.equal(res.statusCode, 200);
+                    done();
+                });
+            });
+
+            it('return 413 when body size over the limit', function(done) {
+                CLIENT.post('/compressed', bodyTooLarge, function(err, _, res) {
+                    assert.isOk(err, 'should fail');
+                    assert.equal(res.statusCode, 413);
+                    assert.deepEqual(JSON.parse(res.body), {
+                        code: 'PayloadTooLarge',
+                        message:
+                            'Inflated request body size exceeds ' + rawBodySize
+                    });
                     done();
                 });
             });
